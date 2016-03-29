@@ -217,58 +217,15 @@ class Conduit(object):
 
     def _authenticate(self):
 
-        message_dict = self._authenticate_make_message()
-        method = "conduit.connect"
-
-        response = self._communicate(method, message_dict)
-
-        error = response["error_code"]
-        error_message = response["error_info"]
-        result = response["result"]
-
-        is_conduitproxy = False
-
-        if error:
-            if error == CONDUITPROXY_ERROR_CONNECT:
-                is_conduitproxy = True
-            else:
-                raise ConduitException(
-                    method=method,
-                    error=error,
-                    errormsg=error_message,
-                    result=result,
-                    obj=message_dict,
-                    uri=self._conduit_uri,
-                    actAsUser=self._act_as_user)
-
-        if is_conduitproxy:
-            # conduit proxies don't have sessions, send the cert every time
-            self._conduit = {
-                'user': self._username,
-                'cert': self._certificate
-            }
-        else:
-            self._conduit = {
-                'sessionKey': result["sessionKey"],
-                'connectionID': result["connectionID"],
-            }
+        self._conduit = {
+            "token": self._certificate
+        }
 
         if self._act_as_user:
             self._conduit["actAsUser"] = self._act_as_user
 
     def _authenticate_make_message(self):
-        token = str(int(time.time()))
-        # pylint: disable=E1101
-        signature = hashlib.sha1(token + self._certificate).hexdigest()
-        # pylint: enable=E1101
-
         return {
-            "user": self._username,
-            "host": self._conduit_uri,
-            "client": self._client,
-            "clientVersion": self._client_version,
-            "authToken": token,
-            "authSignature": signature,
         }
 
     def _communicate(self, method, message_dict):

@@ -195,7 +195,7 @@ def get_uri_user_cert_explanation(uri, user, cert):
                 "  path: {0}\n"
                 "  user: {1}".format(arcrc_path, user))
             if cert is None:
-                cert = host.get("cert", None)
+                cert = host.get("cert", host.get("token",None))
                 explanations.append(
                     "got cert from uri's entry in .arcrc\n"
                     "  path: {0}\n"
