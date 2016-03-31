@@ -369,9 +369,9 @@ def _translate_user_phids(conduit, results):
 
     # do the translation
     for r in results:
-        r[u"authorUsername"] = phidToUser[r["authorPHID"]]
-        r[u"ccUsernames"] = [phidToUser[u] for u in r["ccs"]]
-        r[u"reviewerUsernames"] = [phidToUser[u] for u in r["reviewers"]]
+        r[u"authorUsername"] = phidToUser.get(r["authorPHID"], r["authorPHID"])
+        r[u"ccUsernames"] = [phidToUser.get(u, u) for u in r["ccs"]]
+        r[u"reviewerUsernames"] = [phidToUser.get(u, u) for u in r["reviewers"]]
 
 
 def _exclude_on_update_age(args, results):
