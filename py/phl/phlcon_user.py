@@ -166,7 +166,7 @@ def query_users_from_phids(conduit, phids):
             raise
         return None
 
-    if response and len(response) == len(phids):
+    if response:
         return [QueryResponse(**u) for u in response]
     else:
         return None
