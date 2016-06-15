@@ -1,25 +1,119 @@
-#! /bin/sh
-set -x
-REPO_URL=$1
-if [ ! -d /var/arcyd ]; then
-    cd /var
-    git clone $REPO_URL arcyd
-    git config --global user.email ${ARCYD_EMAIL}
-    git config --global user.name ${ARCYD_NAME}
-    cd arcyd
-    if [ ! -f configfile ]; then
-        arcyd init \
-            --arcyd-email ${ARCYD_EMAIL} \
-            --sleep-secs ${ARCYD_SLEEP_SECS}
-        git push origin master
-    else
-        arcyd fsck --fix
-    fi
-fi
-cd /var/arcyd
-arcyd start --foreground
+#! /usr/bin/python3
+"""Entrypoint for the arcyd docker container."""
+
+import argparse
+import os
+import signal
+import subprocess
+import sys
+import time
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        'REPO_URL',
+        help='URL of the config repository to git clone')
+    parser.add_argument(
+        '--standby-loop',
+        metavar='SECS',
+        type=int,
+        default=None,
+        help='Only fetch in a loop, waiting the specified number of seconds. '
+             'This is useful when you want a warm standby instance.')
+    args = parser.parse_args()
+
+    repo_dir = '/var/arcyd/'
+
+    setup_git_user(
+        os.environ['ARCYD_EMAIL'],
+        os.environ['ARCYD_NAME'])
+
+    if not os.path.exists(repo_dir):
+        setup_repo(args.REPO_URL, repo_dir)
+
+    os.chdir(repo_dir)
+    if args.standby_loop is None:
+        run_arcyd()
+    else:
+        run_standby_loop(args.standby_loop)
+
+
+def run_arcyd():
+    got_sigterm = False
+    def handle_sigterm(unused1, unused2):
+        nonlocal got_sigterm
+        got_sigterm = True
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
+
+    arcyd = subprocess.Popen(['arcyd', 'start', '--foreground'])
+    while arcyd.poll() is None:
+        if got_sigterm:
+            arcyd_stop = subprocess.Popen([
+                'arcyd', 'stop', '--message', 'SIGTERM / probably docker stop',
+            ])
+
+            # If we don't wait(2) on Arcyd then 'arcyd stop' will wait
+            # indefinitely for Arcyd to stop, as it will have an entry in the
+            # process table until it is waited on.
+            arcyd.wait()
+
+            arcyd_stop.wait()
+        else:
+            time.sleep(1)
+
+
+def run_standby_loop(sleep_secs):
+    got_sigterm = False
+    def handle_sigterm(unused1, unused2):
+        nonlocal got_sigterm
+        got_sigterm = True
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
+
+    while not got_sigterm:
+        print('Start refresh', flush=True)
+        if not got_sigterm:
+            subprocess.call(['git', 'pull', '--ff-only'])
+        if not got_sigterm:
+            subprocess.call(['arcyd', 'fsck', '--fix'])
+        if not got_sigterm:
+            subprocess.call(['arcyd', 'fetch'])
+        if not got_sigterm:
+            print('Sleep', sleep_secs, 'secs', flush=True)
+            time.sleep(sleep_secs)  # If we get SIGTERM we'll wake up early
+
+    print('Stopped', flush=True)
+
+
+def setup_git_user(email, name):
+    subprocess.check_call(['git', 'config', '--global', 'user.email', email])
+    subprocess.check_call(['git', 'config', '--global', 'user.name', name])
+
+
+def setup_repo(repo_url, repo_dir):
+        subprocess.check_call(['git', 'clone', repo_url, repo_dir])
+        os.chdir(repo_dir)
+        if not os.path.exists(os.path.join(repo_dir, 'configfile')):
+            # Set this repository up for the first time
+            subprocess.check_call([
+                'arcyd', 'init',
+                '--arcyd-email', os.environ['ARCYD_EMAIL'],
+                '--sleep-secs', os.environ['ARCYD_SLEEP_SECS']
+            ])
+            subprocess.check_call(['git', 'push', 'origin', 'HEAD'])
+        else:
+            # This repository has config, retrieve any missing repos
+            subprocess.check_call(['arcyd', 'fsck', '--fix'])
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+
+
 # -----------------------------------------------------------------------------
-# Copyright (C) 2015 Bloomberg Finance L.P.
+# Copyright (C) 2015-2016 Bloomberg Finance L.P.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.

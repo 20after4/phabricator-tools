@@ -21,7 +21,7 @@ docker rm arcydtest-arcyd || true
 
 docker run -d --name arcydtest-git gitdaemon arcyd testrepo
 ../build-image.sh arcyd-dockerfile arcyd
-docker run -d --name arcydtest-arcyd arcyd git://arcydtest-git/arcyd
+docker run -d --link phab-web --name arcydtest-arcyd arcyd git://arcydtest-git/arcyd
 
 # wait for arcyd container to be ready
 while ! docker exec arcydtest-arcyd arcyd-do list-repos 2> /dev/null; do sleep 1; done
@@ -61,10 +61,34 @@ docker run --rm -i gituser <<EOF
 EOF
 
 docker exec arcydtest-arcyd arcyd-do add-repo phabweb mygit git://arcydtest-git/testrepo --name testrepo
+docker exec arcydtest-arcyd git -C /var/arcyd push origin HEAD
 docker exec arcydtest-arcyd arcyd-do reload
 docker logs arcydtest-arcyd
 
-sleep 5
+set +x
+clear
+cat << EOF
+Welcome to Arcyd docker-testshell!
+
+Type 'exit' to leave and clean up the provided docker containers.
+
+Some things to try:
+
+Get logs from the Arcyd container:
+$ docker logs arcydtest-arcyd
+
+See the info log from the Arcyd container:
+$ docker exec arcydtest-arcyd cat /var/arcyd/var/log/info
+
+Start a new 'arcyd2' container (to clean up yourself):
+$ docker run -d --link phab-web --name arcyd2 arcyd git://arcydtest-git/arcyd
+
+EOF
+set +e
+bash
+set -e
+set -x
+
 docker exec arcydtest-arcyd cat var/arcyd/var/log/info
 
 docker kill arcydtest-git
@@ -72,7 +96,7 @@ docker kill arcydtest-arcyd
 docker rm arcydtest-git
 docker rm arcydtest-arcyd
 # -----------------------------------------------------------------------------
-# Copyright (C) 2015 Bloomberg Finance L.P.
+# Copyright (C) 2015-2016 Bloomberg Finance L.P.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
